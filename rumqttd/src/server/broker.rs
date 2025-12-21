@@ -204,6 +204,11 @@ impl Broker {
         // Spawn servers in a separate thread.
         if let Some(v4_config) = &self.config.v4 {
             for (_, config) in v4_config.clone() {
+                if !config.active {
+                    warn!(name=?config.name, active=?config.active, "Skipping server - inactive (v4)");
+                    continue;
+                }
+                warn!(name=?config.name, active=?config.active, "Starting server (v4)");
                 let server_thread = thread::Builder::new().name(config.name.clone());
                 let mut server = Server::new(config, self.router_tx.clone(), V4);
                 let handle = server_thread.spawn(move || {
@@ -222,6 +227,11 @@ impl Broker {
 
         if let Some(v5_config) = &self.config.v5 {
             for (_, config) in v5_config.clone() {
+                if !config.active {
+                    warn!(name=?config.name, active=?config.active, "Skipping server - inactive (v5)");
+                    continue;
+                }
+                warn!(name=?config.name, active=?config.active, "Starting server (v5)");
                 let server_thread = thread::Builder::new().name(config.name.clone());
                 let mut server = Server::new(config, self.router_tx.clone(), V5);
                 let handle = server_thread.spawn(move || {
@@ -246,6 +256,13 @@ impl Broker {
         #[cfg(feature = "websocket")]
         if let Some(ws_config) = &self.config.ws {
             for (_, config) in ws_config.clone() {
+                if !config.active {
+                    warn!(name=?config.name, active=?config.active, "Skipping server - inactive (ws)");
+
+                    continue;
+                }
+                warn!(name=?config.name, active=?config.active, "Starting server (ws)");
+
                 let server_thread = thread::Builder::new().name(config.name.clone());
                 //TODO: Add support for V5 procotol with websockets. Registered in config or on ServerSettings
                 let mut server = Server::new(config, self.router_tx.clone(), V4);
@@ -264,58 +281,68 @@ impl Broker {
         }
 
         if let Some(prometheus_setting) = &self.config.prometheus {
-            let timeout = prometheus_setting.interval;
-            // If port is specified use it instead of listen.
-            // NOTE: This means listen is ignored when `port` is specified.
-            // `port` will be removed in future release in favour of `listen`
-            let addr = {
-                #[allow(deprecated)]
-                match prometheus_setting.port {
-                    Some(port) => SocketAddr::new("127.0.0.1".parse().unwrap(), port),
-                    None => prometheus_setting.listen.unwrap_or(SocketAddr::new(
-                        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                        9042,
-                    )),
-                }
-            };
-            let metrics_thread = thread::Builder::new().name("Metrics".to_owned());
-            let meter_link = self.meters().unwrap();
-            metrics_thread.spawn(move || {
-                let builder = PrometheusBuilder::new().with_http_listener(addr);
-                builder.install().unwrap();
+            if !prometheus_setting.active {
+                warn!(active=?prometheus_setting.active, "Skipping prometheus exporter - inactive");
+            } else {
+                warn!(active=?prometheus_setting.active, addr=?prometheus_setting.listen, "Starting prometheus exporter");
+                let timeout = prometheus_setting.interval;
+                // If port is specified use it instead of listen.
+                // NOTE: This means listen is ignored when `port` is specified.
+                // `port` will be removed in future release in favour of `listen`
+                let addr = {
+                    #[allow(deprecated)]
+                    match prometheus_setting.port {
+                        Some(port) => SocketAddr::new("127.0.0.1".parse().unwrap(), port),
+                        None => prometheus_setting.listen.unwrap_or(SocketAddr::new(
+                            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                            9042,
+                        )),
+                    }
+                };
+                let metrics_thread = thread::Builder::new().name("Metrics".to_owned());
+                let meter_link = self.meters().unwrap();
+                metrics_thread.spawn(move || {
+                    let builder = PrometheusBuilder::new().with_http_listener(addr);
+                    builder.install().unwrap();
 
-                let total_publishes = gauge!("metrics.router.total_publishes");
-                let total_connections = gauge!("metrics.router.total_connections");
-                let failed_publishes = gauge!("metrics.router.failed_publishes");
-                loop {
-                    if let Ok(metrics) = meter_link.recv() {
-                        for m in metrics {
-                            match m {
-                                Meter::Router(_, ref r) => {
-                                    total_connections.set(r.total_connections as f64);
-                                    total_publishes.set(r.total_publishes as f64);
-                                    failed_publishes.set(r.failed_publishes as f64);
+                    let total_publishes = gauge!("metrics.router.total_publishes");
+                    let total_connections = gauge!("metrics.router.total_connections");
+                    let failed_publishes = gauge!("metrics.router.failed_publishes");
+                    loop {
+                        if let Ok(metrics) = meter_link.recv() {
+                            for m in metrics {
+                                match m {
+                                    Meter::Router(_, ref r) => {
+                                        total_connections.set(r.total_connections as f64);
+                                        total_publishes.set(r.total_publishes as f64);
+                                        failed_publishes.set(r.failed_publishes as f64);
+                                    }
+                                    _ => continue,
                                 }
-                                _ => continue,
                             }
                         }
-                    }
 
-                    std::thread::sleep(Duration::from_secs(timeout));
-                }
-            })?;
+                        std::thread::sleep(Duration::from_secs(timeout));
+                    }
+                })?;
+            }
         }
 
         if let Some(console) = self.config.console.clone() {
-            let console_link = ConsoleLink::new(console, self.router_tx.clone());
+            if !console.active {
+                warn!(active=?console.active, "Skipping console - inactive");
+            } else {
+                warn!(active=?console.active, listen=?console.listen, "Starting console");
+                let console_link = ConsoleLink::new(console, self.router_tx.clone());
 
-            let console_link = Arc::new(console_link);
-            let console_thread = thread::Builder::new().name("Console".to_string());
-            console_thread.spawn(move || {
-                let mut runtime = tokio::runtime::Builder::new_current_thread();
-                let runtime = runtime.enable_all().build().unwrap();
-                runtime.block_on(console::start(console_link));
-            })?;
+                let console_link = Arc::new(console_link);
+                let console_thread = thread::Builder::new().name("Console".to_string());
+                console_thread.spawn(move || {
+                    let mut runtime = tokio::runtime::Builder::new_current_thread();
+                    let runtime = runtime.enable_all().build().unwrap();
+                    runtime.block_on(console::start(console_link));
+                })?;
+            }
         }
 
         // in ideal case, where server doesn't crash, join() will never resolve
@@ -385,7 +412,7 @@ impl<P: Protocol + Clone + Send + 'static> Server<P> {
         let mut count: usize = 0;
 
         let config = Arc::new(self.config.connections.clone());
-        info!(
+        warn!(
             config = self.config.name,
             listen_addr = self.config.listen.to_string(),
             "Listening for remote connections",
@@ -408,7 +435,7 @@ impl<P: Protocol + Clone + Send + 'static> Server<P> {
                 }
             };
 
-            info!(
+            warn!(
                 name=?self.config.name, ?addr, count, tenant=?tenant_id, "accept"
             );
 

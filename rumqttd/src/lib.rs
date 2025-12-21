@@ -65,6 +65,10 @@ pub struct Config {
     pub metrics: Option<HashMap<MetricType, MetricSettings>>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PrometheusSetting {
     #[deprecated(note = "Use listen instead")]
@@ -72,6 +76,8 @@ pub struct PrometheusSetting {
     listen: Option<SocketAddr>,
     // How frequently to update metrics
     interval: u64,
+    #[serde(default = "default_true")]
+    pub active: bool,
 }
 
 // TODO: Change names without _ until config-rs issue is resolved
@@ -116,6 +122,8 @@ pub struct ServerSettings {
     pub tls: Option<TlsConfig>,
     pub next_connection_delay_ms: u64,
     pub connections: ConnectionSettings,
+    #[serde(default = "default_true")]
+    pub active: bool,
 }
 
 impl ServerSettings {
@@ -217,6 +225,8 @@ pub struct ConsoleSettings {
     pub listen: String,
     #[serde(skip)]
     filter_handle: Option<ReloadHandle>,
+    #[serde(default = "default_true")]
+    pub active: bool,
 }
 
 impl ConsoleSettings {

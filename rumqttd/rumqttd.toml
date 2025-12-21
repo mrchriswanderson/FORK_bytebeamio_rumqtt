@@ -38,6 +38,7 @@ max_segment_count = 10
 # Configuration of server and connections that it accepts
 [v4.1]
 name = "v4-1"
+active = true
 listen = "0.0.0.0:1883"
 next_connection_delay_ms = 1
     [v4.1.connections]
@@ -52,6 +53,7 @@ next_connection_delay_ms = 1
 
 # [v4.2]
 # name = "v4-2"
+# active = true
 # listen = "0.0.0.0:8883"
 # next_connection_delay_ms = 10
 #     # tls config for rustls
@@ -67,8 +69,24 @@ next_connection_delay_ms = 1
 #     max_inflight_count = 100
 #     max_inflight_size = 1024
 
+[v4.3]
+name = "v4-3"
+active = true
+listen = "0.0.0.0:1884"
+next_connection_delay_ms = 1
+    [v4.3.connections]
+    connection_timeout_ms = 60000
+    max_payload_size = 20480
+    max_inflight_count = 100
+    dynamic_filters = true
+    auth = { user1 = "p@ssw0rd", user2 = "password" }
+ #      [v4.3.connections.auth]
+ #      user1 = "p@ssw0rd"
+ #      user2 = "password"
+
 [v5.1]
 name = "v5-1"
+active = false
 listen = "0.0.0.0:1884"
 next_connection_delay_ms = 1
     [v5.1.connections]
@@ -77,11 +95,14 @@ next_connection_delay_ms = 1
     max_inflight_count = 100
 
 [prometheus]
+name = "Prometheus"
+active = false
 listen = "127.0.0.1:9042"
 interval = 1
 
 [ws.1]
 name = "ws-1"
+active = false
 listen = "0.0.0.0:8083"
 next_connection_delay_ms = 1
     [ws.1.connections]
@@ -109,6 +130,8 @@ next_connection_delay_ms = 1
 #     max_inflight_size = 1024
 
 [console]
+name = "console"
+active = false
 listen = "0.0.0.0:3030"
 
 # [metrics]
